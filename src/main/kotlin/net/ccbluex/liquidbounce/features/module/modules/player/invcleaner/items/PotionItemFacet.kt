@@ -1,0 +1,182 @@
+/*
+ * This file is part of LiquidBounce (https://github.com/CCBlueX/LiquidBounce)
+ *
+ * Copyright (c) 2015 - 2025 CCBlueX
+ *
+ * LiquidBounce is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * LiquidBounce is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with LiquidBounce. If not, see <https://www.gnu.org/licenses/>.
+ *
+ */
+
+package net.ccbluex.liquidbounce.features.module.modules.player.invcleaner.items
+
+import it.unimi.dsi.fastutil.objects.ObjectArrayList
+import it.unimi.dsi.fastutil.objects.ReferenceOpenHashSet
+import net.ccbluex.fastutil.asIntList
+import net.ccbluex.fastutil.mapToIntArray
+import net.ccbluex.liquidbounce.features.module.modules.player.invcleaner.*
+import net.ccbluex.liquidbounce.utils.inventory.ItemSlot
+import net.ccbluex.liquidbounce.utils.item.getPotionEffects
+import net.ccbluex.liquidbounce.utils.sorting.ComparatorChain
+import net.ccbluex.liquidbounce.utils.sorting.Tier
+import net.minecraft.entity.effect.StatusEffect
+import net.minecraft.entity.effect.StatusEffects
+import net.minecraft.item.LingeringPotionItem
+import net.minecraft.item.PotionItem
+import net.minecraft.item.SplashPotionItem
+import net.minecraft.registry.entry.RegistryEntry
+
+class PotionItemFacet(itemSlot: ItemSlot) : ItemFacet(itemSlot) {
+    override val category: ItemCategory
+        get() = ItemCategory(ItemType.POTION, 0)
+
+    companion object {
+        /**
+         * Prefers potions which have more status effects of higher Tier.
+         * For example:
+         * - `S > A`
+         * - `A + A > A + B`
+         * - `A + A + F > A + A`
+         * - etc.
+         */
+        private val PreferHigherTierPotions = Comparator<PotionItemFacet> { o1, o2 ->
+            compareValuesBy(o1, o2) { o ->
+                o.itemStack.getPotionEffects()
+                    .mapTo(ObjectArrayList()) { it.effectType.value().tier }
+                    .apply { sortDescending() }
+            }
+        }
+
+        /**
+         * This check is pretty random as it does not care which effect it compares.
+         * - Anything (S-Tier) II + Anything (S-Tier) I > Anything (S-Tier) I + Anything (S-Tier) I
+         */
+        private val PreferAmplifier = Comparator<PotionItemFacet> { o1, o2 ->
+            compareValuesBy(o1, o2) { o ->
+                o.itemStack.getPotionEffects()
+                    .sortedByDescending { it.effectType.value().tier }
+                    .mapToIntArray { it.amplifier }.asIntList()
+            }
+        }
+
+        /**
+         * Prefers quick and targeted potions: `splash potion > drinkable potion > lingering potion`
+         */
+        private val PreferSplashPotions = Comparator<PotionItemFacet> { o1, o2 ->
+            fun tierOfPotionType(potionItem: PotionItem): Tier {
+                return when (potionItem) {
+                    is SplashPotionItem -> Tier.S
+                    is LingeringPotionItem -> Tier.B
+                    else -> Tier.A
+                }
+            }
+
+            compareValuesBy(o1, o2) { o ->
+                tierOfPotionType(o.itemStack.item as PotionItem)
+            }
+        }
+
+        /**
+         * Prefers higher duration of higher tiers.
+         * - `S (1:00) > S (0:30)`
+         * - `S (0:30) + A (1:00) > S (1:00) + A (20:00)`
+         */
+        private val PreferHigherDurationPotions = Comparator<PotionItemFacet> { o1, o2 ->
+            compareValuesBy(o1, o2) { o ->
+                o.itemStack.getPotionEffects()
+                    .sortedByDescending { it.effectType.value().tier }
+                    .mapToIntArray { it.duration }.asIntList()
+            }
+        }
+
+        private val COMPARATOR = ComparatorChain(
+            PreferHigherTierPotions,
+            PreferAmplifier,
+            PreferSplashPotions,
+            PreferHigherDurationPotions,
+            PREFER_ITEMS_IN_HOTBAR,
+            STABILIZE_COMPARISON
+        )
+
+        private val StatusEffect.tier: Tier
+            get() = GOOD_STATUS_EFFECT_TIER_LIST.getOrDefault(this, Tier.F)
+
+        private val GOOD_STATUS_EFFECT_TIER_LIST = hashMapOf(
+            StatusEffects.INSTANT_HEALTH to Tier.S,
+
+            StatusEffects.REGENERATION to Tier.A,
+            StatusEffects.RESISTANCE to Tier.A,
+            StatusEffects.FIRE_RESISTANCE to Tier.A,
+            StatusEffects.HEALTH_BOOST to Tier.A,
+            StatusEffects.ABSORPTION to Tier.A,
+
+            StatusEffects.SPEED to Tier.B,
+            StatusEffects.STRENGTH to Tier.B,
+            StatusEffects.SLOW_FALLING to Tier.B,
+            StatusEffects.INVISIBILITY to Tier.B,
+
+            StatusEffects.SATURATION to Tier.C,
+            StatusEffects.WATER_BREATHING to Tier.C,
+            StatusEffects.JUMP_BOOST to Tier.C,
+            StatusEffects.HASTE to Tier.C,
+            StatusEffects.NIGHT_VISION to Tier.C,
+
+            StatusEffects.LUCK to Tier.D,
+        ).mapKeys { it.key.value() }
+
+        @JvmField
+        val BAD_STATUS_EFFECTS: Set<RegistryEntry<StatusEffect>> = ReferenceOpenHashSet.of(
+            StatusEffects.SLOWNESS,
+            StatusEffects.MINING_FATIGUE,
+            StatusEffects.INSTANT_DAMAGE,
+            StatusEffects.NAUSEA,
+            StatusEffects.BLINDNESS,
+            StatusEffects.HUNGER,
+            StatusEffects.WEAKNESS,
+            StatusEffects.POISON,
+            StatusEffects.WITHER,
+            StatusEffects.GLOWING,
+            StatusEffects.LEVITATION,
+            StatusEffects.UNLUCK,
+            StatusEffects.BAD_OMEN,
+            StatusEffects.DARKNESS,
+        )
+
+        @JvmField
+        val GOOD_STATUS_EFFECTS: Set<RegistryEntry<StatusEffect>> = ReferenceOpenHashSet.of(
+            StatusEffects.SPEED,
+            StatusEffects.HASTE,
+            StatusEffects.STRENGTH,
+            StatusEffects.INSTANT_HEALTH,
+            StatusEffects.JUMP_BOOST,
+            StatusEffects.REGENERATION,
+            StatusEffects.RESISTANCE,
+            StatusEffects.FIRE_RESISTANCE,
+            StatusEffects.WATER_BREATHING,
+            StatusEffects.NIGHT_VISION,
+            StatusEffects.HEALTH_BOOST,
+            StatusEffects.ABSORPTION,
+            StatusEffects.SATURATION,
+            StatusEffects.LUCK,
+            StatusEffects.SLOW_FALLING,
+            StatusEffects.CONDUIT_POWER,
+            StatusEffects.DOLPHINS_GRACE,
+            StatusEffects.HERO_OF_THE_VILLAGE,
+            StatusEffects.INVISIBILITY,
+        )
+    }
+
+    override fun compareTo(other: ItemFacet): Int {
+        return COMPARATOR.compare(this, other as PotionItemFacet)
+    }
+}

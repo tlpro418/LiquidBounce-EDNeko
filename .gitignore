@@ -1,0 +1,20 @@
+.idea/*
+!.idea/copyright/
+!.idea/codeInsightSettings.xml
+*.iml
+*.ipr
+*.iws
+/bin/
+/.settings/
+/.gradle/
+/build/
+/run/
+/mcef/
+/logs/
+/.kotlin/
+.DS_Store
+
+# build output, editor scratch and anything a failed edit left behind
+*.log
+*.tmpdir/
+/out/

@@ -1,0 +1,127 @@
+/*
+ * This file is part of LiquidBounce (https://github.com/CCBlueX/LiquidBounce)
+ *
+ * Copyright (c) 2015 - 2025 CCBlueX
+ *
+ * LiquidBounce is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * LiquidBounce is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with LiquidBounce. If not, see <https://www.gnu.org/licenses/>.
+ */
+package net.ccbluex.liquidbounce.features.module.modules.world.traps.traps
+
+import it.unimi.dsi.fastutil.objects.ReferenceSet
+import net.ccbluex.liquidbounce.event.EventListener
+import net.ccbluex.liquidbounce.features.module.modules.world.traps.*
+import net.ccbluex.liquidbounce.features.module.modules.world.traps.ModuleAutoTrap.targetTracker
+import net.ccbluex.liquidbounce.utils.block.getState
+import net.ccbluex.liquidbounce.utils.block.targetfinding.*
+import net.ccbluex.liquidbounce.utils.entity.lastPos
+import net.ccbluex.liquidbounce.utils.inventory.HotbarItemSlot
+import net.ccbluex.liquidbounce.utils.math.toBlockPos
+import net.minecraft.block.Block
+import net.minecraft.block.Blocks
+import net.minecraft.entity.*
+import net.minecraft.item.Item
+import net.minecraft.item.Items
+import net.minecraft.util.hit.BlockHitResult
+import net.minecraft.util.hit.HitResult
+import net.minecraft.util.math.*
+
+class WebTrapPlanner(parent: EventListener) : TrapPlanner<WebTrapPlanner.WebIntentData>(
+    parent,
+    "AutoWeb",
+    true
+) {
+
+    override val trapItems: Set<Item> = ReferenceSet.of(Items.COBWEB)
+    override val trapWorthyBlocks: Set<Block> = ReferenceSet.of(Blocks.COBWEB)
+
+    override fun plan(enemies: List<LivingEntity>): BlockChangeIntent<WebIntentData>? {
+        val slot = findSlotForTrap() ?: return null
+
+        for (target in enemies) {
+            val targetPos = TrapPlayerSimulation.findPosForTrap(
+                target, isTargetLocked = targetTracker.target == target
+            ) ?: continue
+
+            val placementTarget = generatePlacementInfo(targetPos, target, slot) ?: continue
+
+            targetTracker.target = target
+            return BlockChangeIntent(
+                BlockChangeInfo.PlaceBlock(placementTarget),
+                slot,
+                IntentTiming.NEXT_PROPITIOUS_MOMENT,
+                WebIntentData(target, target.getDimensions(EntityPose.STANDING).getBoxAt(targetPos)),
+                this
+            )
+        }
+
+        return null
+    }
+
+    private fun generatePlacementInfo(
+        targetPos: Vec3d,
+        target: LivingEntity,
+        slot: HotbarItemSlot,
+    ): BlockPlacementTarget? {
+        val blockPos = targetPos.toBlockPos()
+
+        if (blockPos.getState()?.block in trapWorthyBlocks) {
+            return null
+        }
+
+        val offsetsForTargets = findOffsetsForTarget(
+            targetPos,
+            target.getDimensions(EntityPose.STANDING),
+            target.pos.subtract(target.lastPos),
+            slot.itemStack.item == Items.COBWEB
+        )
+
+        val options = BlockPlacementTargetFindingOptions(
+            BlockOffsetOptions(
+                offsetsForTargets,
+                BlockPlacementTargetFindingOptions.PRIORITIZE_LEAST_BLOCK_DISTANCE,
+            ),
+            FaceHandlingOptions(
+                NearestRotationTargetPositionFactory(PositionFactoryConfiguration(player.eyePos, 0.5))
+            ),
+            stackToPlaceWith = slot.itemStack,
+            PlayerLocationOnPlacement(position = player.pos),
+        )
+
+        return findBestBlockPlacementTarget(blockPos, options)
+    }
+
+    override fun validate(plan: BlockChangeIntent<WebIntentData>, raycast: BlockHitResult): Boolean {
+        if (raycast.type != HitResult.Type.BLOCK) {
+            return false
+        }
+
+        val actualPos = raycast.blockPos.add(raycast.side.vector)
+
+        if (!Box(actualPos).intersects(plan.planningInfo.targetBB)) {
+            return false
+        }
+
+        return plan.slot.itemStack.item in trapItems
+    }
+
+    override fun onIntentFullfilled(intent: BlockChangeIntent<WebIntentData>) {
+        targetTracker.target = intent.planningInfo.target
+    }
+
+    class WebIntentData(
+        val target: LivingEntity,
+        val targetBB: Box
+    )
+
+}

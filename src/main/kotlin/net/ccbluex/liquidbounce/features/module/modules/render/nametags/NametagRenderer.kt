@@ -1,0 +1,106 @@
+/*
+ * This file is part of LiquidBounce (https://github.com/CCBlueX/LiquidBounce)
+ *
+ * Copyright (c) 2015 - 2025 CCBlueX
+ *
+ * LiquidBounce is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * LiquidBounce is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with LiquidBounce. If not, see <https://www.gnu.org/licenses/>.
+ */
+package net.ccbluex.liquidbounce.features.module.modules.render.nametags
+
+import net.ccbluex.liquidbounce.features.module.modules.render.nametags.NametagEnchantmentRenderer.drawEntityEnchantments
+import net.ccbluex.liquidbounce.render.*
+import net.ccbluex.liquidbounce.render.ItemStackListRenderer.Companion.drawItemStackList
+import net.ccbluex.liquidbounce.render.drawQuad
+import net.ccbluex.liquidbounce.render.engine.type.Color4b
+import net.ccbluex.liquidbounce.utils.client.player
+import net.minecraft.client.gui.DrawContext
+import net.minecraft.entity.LivingEntity
+
+private const val NAMETAG_PADDING: Int = 15
+
+private const val FONT_SIZE = FontManager.DEFAULT_FONT_SIZE
+private const val BASE_SCALE_FACTOR = 1f / (FONT_SIZE * 0.15f)
+private const val BACKGROUND_X_OFFSET = 0.1f * FONT_SIZE
+private const val BACKGROUND_Y_OFFSET_TOP = -0.1f
+private const val BACKGROUND_Y_OFFSET_BOTTOM = 1.1f
+private const val BACKGROUND_X_PADDING = 0.2f * FONT_SIZE
+
+internal fun DrawContext.drawNametag(nametag: Nametag, posX: Float, posY: Float) {
+    if (nametag.items.any { !it.isEmpty }) {
+        val currentItemStackRenderer = if (NametagEquipment.showInfo) {
+            if (nametag.entity === player) {
+                ItemStackListRenderer.SingleItemStackRenderer.All
+            } else {
+                ItemStackListRenderer.SingleItemStackRenderer.ForOtherPlayer
+            }
+        } else {
+            ItemStackListRenderer.SingleItemStackRenderer.OnlyItem
+        }
+
+        drawItemStackList(nametag.items)
+            .centerX(posX)
+            .centerY(posY - NAMETAG_PADDING * ModuleNametags.scale)
+            .scale(ModuleNametags.scale)
+            .itemStackRenderer(currentItemStackRenderer)
+            .rectBackground(Color4b.TRANSPARENT)
+            .draw()
+    }
+
+    val scale = BASE_SCALE_FACTOR * ModuleNametags.scale
+
+    matrices.pushMatrix()
+    matrices.translate(posX, posY)
+    matrices.scale(scale, scale)
+
+    val fontRenderer = ModuleNametags.fontRenderer
+    val processedText = fontRenderer.process(nametag.text)
+    val textWidth = fontRenderer.getStringWidth(processedText, shadow = true)
+
+    // Make the model view matrix center the text when rendering
+    matrices.translate(-textWidth * 0.5f, -fontRenderer.height * 0.5f)
+
+    val x1 = -BACKGROUND_X_OFFSET
+    val y1 = fontRenderer.height * BACKGROUND_Y_OFFSET_TOP
+    val x2 = textWidth + BACKGROUND_X_PADDING
+    val y2 = fontRenderer.height * BACKGROUND_Y_OFFSET_BOTTOM
+
+    // Background
+    drawQuad(
+        x1, y1, x2, y2,
+        fillColor = Color4b(Int.MIN_VALUE, hasAlpha = true),
+        outlineColor = Color4b.BLACK.takeIf { ModuleNametags.border },
+    )
+
+    // Text
+    fontRenderer.draw(
+        processedText,
+        x0 = 0f, y0 = 0f,
+        shadow = true,
+    )
+
+    // Draw enchantments directly for the entity (regardless of whether items are shown)
+    if (NametagEnchantmentRenderer.running && nametag.entity is LivingEntity) {
+        val entityPos = nametag.entity.pos
+        val worldX = entityPos.x.toFloat()
+        val worldY = (entityPos.y + nametag.entity.height + 0.5f).toFloat()
+
+        drawEntityEnchantments(
+            nametag.entity,
+            worldX,
+            worldY,
+        )
+    }
+
+    matrices.popMatrix()
+}
