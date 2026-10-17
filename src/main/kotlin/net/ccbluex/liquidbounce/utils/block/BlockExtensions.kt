@@ -584,7 +584,15 @@ fun doBreak(
     }
 
     if (immediate) {
-        EventManager.callEvent(BlockBreakingProgressEvent(blockPos))
+        val progressEvent = BlockBreakingProgressEvent(blockPos)
+        EventManager.callEvent(progressEvent)
+
+        // A cancelled event means this block must not be broken at all. This branch builds the packets
+        // itself and therefore never reaches updateBlockBreakingProgress, so the veto has to be honoured
+        // here too - otherwise modules like NoGlassBreak could be bypassed by another module's mining.
+        if (progressEvent.isCancelled) {
+            return
+        }
 
         interaction.sendSequencedPacket(world) { sequence ->
             PlayerActionC2SPacket(

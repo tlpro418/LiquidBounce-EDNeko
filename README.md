@@ -66,6 +66,18 @@ LiquidBounce 原来的 AutoBow 用的是抛物线近似公式，远距离误差�
 - 转头直接复用 KillAura 那套（含 ShortStop / Fail / Noise / 随机化等全部处理器）
 - 已用独立数值测试台验证：105 组「距离 3~112 格 × 高差 ±20 格」，99 组精确命中（偏离 0.0000 格）
 
+### 6. 不挖玻璃（NoGlassBreak）— 本分支原创
+
+有的服务器反作弊有 bug，挖玻璃会被误判封号。这个模块开启后**完全挖不动玻璃**，连包都不会发出去：
+
+- 按方块注册名是否包含 `glass` 识别，覆盖普通玻璃、玻璃板、16 种染色玻璃及其玻璃板、遮光玻璃
+- 同时掐掉初始点击（`BlockAttackEvent`）和每 tick 的挖掘进度（`BlockBreakingProgressEvent`），
+  所以不会产生任何 `START_DESTROY_BLOCK` / `STOP_DESTROY_BLOCK` 包，本地也不会累积破坏进度
+- Nuker / PacketMine 这类自己拼包的模式同样会被拦住
+- **出站包兜底**：任何指向玻璃的 `PlayerActionC2SPacket`（START / ABORT / STOP）在发送前被直接丢弃，
+  优先级为 `FINAL_DECISION`，能否决前面所有处理器
+- 可选 `Panes` / `Stained` 开关，默认全保护
+
 ---
 
 ## 下载

@@ -51,11 +51,19 @@ public abstract class MixinClientPlayerInteractionManager {
 
     /**
      * Hook into updateBlockBreakingProgress method at HEAD and call BlockBreakingProgress event.
+     *
+     * Cancelling the event skips the whole progress update, so neither the local break progress nor the
+     * `START_DESTROY_BLOCK` packet is produced. This is the only thing that stops breaking while the
+     * attack key is held down, since {@link #hookAttackBlock} only covers the initial click.
      */
-    @Inject(method = "updateBlockBreakingProgress", at = @At(value = "HEAD"))
+    @Inject(method = "updateBlockBreakingProgress", at = @At(value = "HEAD"), cancellable = true)
     private void hookBlockBreakingProgress(BlockPos pos, Direction direction, CallbackInfoReturnable<Boolean> cir) {
         final BlockBreakingProgressEvent blockBreakingProgressEvent = new BlockBreakingProgressEvent(pos);
         EventManager.INSTANCE.callEvent(blockBreakingProgressEvent);
+
+        if (blockBreakingProgressEvent.isCancelled()) {
+            cir.setReturnValue(false);
+        }
     }
 
     /**

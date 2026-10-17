@@ -436,6 +436,7 @@ object ModuleManager : EventListener, Collection<ClientModule> by modules {
             ModuleScaffold,
             ModuleTimer,
             ModuleNuker,
+            ModuleNoGlassBreak,
             ModuleExtinguish,
             ModuleBedDefender,
             ModuleBlockIn,
