@@ -391,7 +391,7 @@
   "liquidbounce.command.seen.result.offline": "%s está desconectado.",
   "liquidbounce.command.vclip.description": "Move-se verticalmente por um número específico de blocos.",
   "liquidbounce.command.vclip.parameter.amount.description": "Número de blocos.",
-  "liquidbounce.tabGui.mainMenu.liquidBounce": "LiquidBounce",
+  "liquidbounce.tabGui.mainMenu.liquidBounce": "EDneko NG",
   "liquidbounce.tabGui.moduleManager.combat": "Combate",
   "liquidbounce.tabGui.moduleManager.render": "Renderizar",
   "liquidbounce.tabGui.moduleManager.movement": "Movimento",

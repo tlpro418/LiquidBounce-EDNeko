@@ -74,7 +74,7 @@ class ErrorHandler private constructor(
         }
     }
 
-    private inline val title get() = "${LiquidBounce.CLIENT_NAME} Nextgen"
+    private inline val title get() = LiquidBounce.CLIENT_NAME
 
     private val builder = java.lang.StringBuilder()
 

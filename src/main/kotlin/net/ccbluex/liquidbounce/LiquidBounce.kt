@@ -106,8 +106,8 @@ object LiquidBounce : EventListener {
      *
      * WARNING: Please read the GNU General Public License
      */
-    const val CLIENT_NAME = "LiquidBounce"
-    const val CLIENT_AUTHOR = "CCBlueX"
+    const val CLIENT_NAME = "EDneko NG"
+    const val CLIENT_AUTHOR = "Nekofix"
 
     private object Client : Configurable("Client") {
         val version = text("Version", GitInfo.version())
@@ -155,10 +155,20 @@ object LiquidBounce : EventListener {
         private set
 
     /**
-     * Creates an [net.minecraft.util.Identifier] starts with [CLIENT_NAME].
+     * Namespace that all of this client's own assets and registrations live under.
+     *
+     * Deliberately NOT derived from [CLIENT_NAME]: it addresses files that physically live under
+     * `assets/liquidbounce` and `resources/liquidbounce`, and it is embedded in already registered item
+     * groups and capes. Renaming it would break resource lookup and every existing registration, so it
+     * stays frozen even though the client was rebranded.
+     */
+    const val RESOURCE_NAMESPACE = "liquidbounce"
+
+    /**
+     * Creates an [net.minecraft.util.Identifier] inside [RESOURCE_NAMESPACE].
      */
     @JvmStatic
-    fun identifier(path: String): Identifier = Identifier.of(CLIENT_NAME.lowercase(Locale.ROOT), path)
+    fun identifier(path: String): Identifier = Identifier.of(RESOURCE_NAMESPACE, path)
 
     /**
      * Gets client resource.

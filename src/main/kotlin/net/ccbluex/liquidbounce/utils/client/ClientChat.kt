@@ -38,7 +38,7 @@ import java.io.File
 // Chat formatting
 private val clientPrefix: Text = "".asText()
     .formatted(Formatting.RESET, Formatting.GRAY)
-    .append(gradientText("LiquidBounce", Color4b.fromHex("#4677ff"), Color4b.fromHex("#24AA7F")))
+    .append(gradientText("EDneko NG", Color4b.fromHex("#4677ff"), Color4b.fromHex("#24AA7F")))
     .append(" ▸ ".asText().formatted(Formatting.RESET, Formatting.GRAY))
 
 fun regular(text: MutableText): MutableText = text.formatted(Formatting.GRAY)

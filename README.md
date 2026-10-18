@@ -1,10 +1,12 @@
-# LiquidBounce-EDNeko
+# EDneko NG
 
 把 **EDNeko**（Minecraft 1.8.9 的 Forge 客户端）里的战斗 / 移动模块移植到
-**LiquidBounce NextGen** 的社区分支，目标版本 **Minecraft 1.21.8 + Fabric**。
+**LiquidBounce NextGen** 的社区分支，并整体更名为 **EDneko NG**。
+目标版本 **Minecraft 1.21.8 + Fabric**。
 
 | | |
 |---|---|
+| 客户端名称 | **EDneko NG**（窗口标题、聊天前缀、GUI、Mod Menu 均已更名） |
 | 上游项目 | [CCBlueX/LiquidBounce](https://github.com/CCBlueX/LiquidBounce) — GPL-3.0 |
 | 移植来源 | [RouQingNeko1024/EDNeko](https://github.com/RouQingNeko1024/EDNeko) — GPL-3.0 |
 | 本仓库许可证 | [GNU GPL-3.0](LICENSE) |
@@ -12,6 +14,15 @@
 
 > ⚠️ 这不是 LiquidBounce 官方版本，与 CCBlueX 没有任何隶属关系。LiquidBounce 的全部版权归 CCBlueX 所有，
 > EDNeko 的全部版权归 RouQingNeko1024 所有。本仓库只是基于它们的 GPL-3.0 衍生作品。
+> 更名只涉及用户可见的显示名称，**包名、资源命名空间、版权头和 LICENSE 全部保留原样**，见 `CREDITS.md`。
+
+### 更名说明
+
+- **改变的**：窗口标题、聊天前缀、主菜单 GUI、Mod Menu 条目、Discord 状态、报错窗口、
+  配置目录（旧目录会自动迁移）、`/clientinfo` 输出、生成物品的 Lore
+- **不变（有意保留）**：Java 包名 `net.ccbluex.liquidbounce`、Minecraft 资源命名空间
+  `liquidbounce`（shader / pipeline / item group / cape 都挂在这上面）、GPL 版权头、`LICENSE`、
+  `CREDITS.md`、语言文件的翻译键名
 
 ---
 

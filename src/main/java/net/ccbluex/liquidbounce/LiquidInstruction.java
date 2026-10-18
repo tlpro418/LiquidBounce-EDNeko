@@ -85,7 +85,7 @@ public final class LiquidInstruction {
     switch (result) {
       case 0 -> browse(URI.create("https://liquidbounce.net/docs/get-started/manual-installation"));
       case 1 -> browse(URI.create("https://liquidbounce.net/download"));
-      case 2 -> browse(URI.create("https://github.com/CCBlueX/LiquidBounce"));
+      case 2 -> browse(URI.create("https://github.com/tlpro418/LiquidBounce-EDNeko"));
       case 3 -> browse(URI.create("https://liquidbounce.net/discord"));
       default -> System.exit(0);
     }

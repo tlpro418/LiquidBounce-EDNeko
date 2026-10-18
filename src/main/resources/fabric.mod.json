@@ -2,17 +2,17 @@
   "schemaVersion": 1,
   "id": "liquidbounce",
   "version": "${version}",
-  "name": "LiquidBounce",
+  "name": "EDneko NG",
   "description": "A free mixin-based injection hacked-client for Minecraft using the Fabric modding toolchain.",
   "authors": [
+    "Nekofix",
     "CCBlueX"
   ],
   "contributors": $contributors,
   "contact": {
-    "homepage": "https://liquidbounce.net/",
-    "sources": "https://github.com/CCBlueX/LiquidBounce/",
-    "issues": "https://github.com/CCBlueX/LiquidBounce/issues",
-    "email": "support@liquidbounce.net"
+    "homepage": "https://github.com/tlpro418/LiquidBounce-EDNeko",
+    "sources": "https://github.com/tlpro418/LiquidBounce-EDNeko/",
+    "issues": "https://github.com/tlpro418/LiquidBounce-EDNeko/issues"
   },
   "license": "GNU General Public License v3.0",
   "icon": "resources/liquidbounce/icon_64x64.png",
@@ -23,7 +23,7 @@
   "custom": {
     "modmenu": {
       "links": {
-        "liquidbounce.generic.forum": "https://forums.ccbluex.net/"
+        "GitHub": "https://github.com/tlpro418/LiquidBounce-EDNeko"
       }
     }
   },

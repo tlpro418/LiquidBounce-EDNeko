@@ -21,7 +21,6 @@ package net.ccbluex.liquidbounce.config
 import com.google.gson.Gson
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
-import net.ccbluex.liquidbounce.LiquidBounce
 import net.ccbluex.liquidbounce.config.gson.fileGson
 import net.ccbluex.liquidbounce.config.gson.util.parseTree
 import net.ccbluex.liquidbounce.config.types.Value
@@ -44,13 +43,41 @@ import java.io.Writer
 @Suppress("TooManyFunctions")
 object ConfigSystem {
 
+    /**
+     * Folder inside the run directory that holds configs, themes and settings.
+     */
+    private const val CONFIG_DIRECTORY = "EDneko NG"
+
+    /**
+     * Folder used before the client was rebranded. Renamed on first launch so that an existing
+     * installation keeps its configuration instead of silently starting from scratch.
+     */
+    private const val LEGACY_CONFIG_DIRECTORY = "LiquidBounce"
+
     var isFirstLaunch: Boolean = false
         private set
 
     // Config directory folder
     val rootFolder = File(
-        mc.runDirectory, LiquidBounce.CLIENT_NAME
+        mc.runDirectory, CONFIG_DIRECTORY
     ).apply {
+        if (!exists()) {
+            runCatching {
+                val legacy = File(mc.runDirectory, LEGACY_CONFIG_DIRECTORY)
+
+                if (legacy.isDirectory) {
+                    legacy.renameTo(this)
+                    logger.info("Migrated the config directory from '$LEGACY_CONFIG_DIRECTORY'")
+                }
+            }.onFailure {
+                logger.warn(
+                    "Unable to migrate '$LEGACY_CONFIG_DIRECTORY' to '$CONFIG_DIRECTORY', " +
+                        "copy the folder manually to keep your settings",
+                    it
+                )
+            }
+        }
+
         // Check if there is already a config folder and if not create new folder
         // (mkdirs not needed - .minecraft should always exist)
         if (!exists()) {

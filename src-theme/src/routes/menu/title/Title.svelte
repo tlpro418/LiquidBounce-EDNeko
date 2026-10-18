@@ -25,8 +25,8 @@
 
             if (clientUpdate.update) {
                 notification.set({
-                    title: `LiquidBounce ${clientUpdate.update.clientVersion} has been released!`,
-                    message: `Download it from liquidbounce.net!`,
+                    title: `EDneko NG ${clientUpdate.update.clientVersion} has been released!`,
+                    message: `Download it from github.com/tlpro418/LiquidBounce-EDNeko/releases!`,
                     error: false,
                     delay: 99999999
                 });
@@ -61,7 +61,7 @@
                     <ChildButton title="Realms" icon="realms" {parentHovered}
                                  on:click={() => openScreen("multiplayer_realms")}/>
                 </MainButton>
-                <MainButton title="LiquidBounce" icon="liquidbounce" on:click={toggleButtons} index={2}/>
+                <MainButton title="EDneko NG" icon="liquidbounce" on:click={toggleButtons} index={2}/>
                 <MainButton title="Options" icon="options" on:click={() => openScreen("options")} index={3}/>
             {:else if clientButtonsShown}
                 <MainButton title="Proxy Manager" icon="proxymanager" on:click={() => openScreen("proxymanager")}
@@ -82,13 +82,8 @@
 
         <div class="social-buttons" transition:fly|global={{duration: 700, y: 100}}>
             <ButtonContainer>
-                <IconButton title="Forum" icon="nodebb" on:click={() => browse("MAINTAINER_FORUM")}/>
                 <IconButton title="GitHub" icon="github" on:click={() => browse("MAINTAINER_GITHUB")}/>
-                <IconButton title="Discord" icon="discord" on:click={() => browse("MAINTAINER_DISCORD")}/>
-                <IconButton title="Twitter" icon="twitter" on:click={() => browse("MAINTAINER_TWITTER")}/>
-                <IconButton title="YouTube" icon="youtube" on:click={() => browse("MAINTAINER_YOUTUBE")}/>
-                <IconTextButton title="liquidbounce.net" icon="icon-liquidbounce.net.svg"
-                                on:click={() => browse("CLIENT_WEBSITE")}/>
+                <IconButton title="Issues" icon="nodebb" on:click={() => browse("MAINTAINER_FORUM")}/>
             </ButtonContainer>
         </div>
     </div>

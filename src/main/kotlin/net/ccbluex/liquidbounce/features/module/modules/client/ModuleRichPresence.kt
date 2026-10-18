@@ -64,7 +64,7 @@ object ModuleRichPresence : ClientModule("RichPresence", Category.CLIENT, state 
         }
     }
 
-    private val detailsText by text("Details", "Nextgen v%clientVersion% by %clientAuthor%")
+    private val detailsText by text("Details", "EDneko NG v%clientVersion% by %clientAuthor%")
     private val stateText by text("State", "%enabledModules% of %totalModules% modules enabled")
 
     private val largeImageText by text("LargeImage", "Online with %protocol%")
@@ -172,12 +172,12 @@ object ModuleRichPresence : ClientModule("RichPresence", Category.CLIENT, state 
                 jsonArrayOf(
                     json {
                         "label" to "Download"
-                        "url" to "https://liquidbounce.net/"
+                        "url" to "https://github.com/tlpro418/LiquidBounce-EDNeko"
                     },
 
                     json {
                         "label" to "GitHub"
-                        "url" to "https://github.com/CCBlueX/LiquidBounce"
+                        "url" to "https://github.com/tlpro418/LiquidBounce-EDNeko"
                     },
                 )
             )

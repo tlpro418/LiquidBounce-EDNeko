@@ -94,6 +94,20 @@ This file records third-party code origins, licenses and the modifications made 
 
 ---
 
+## 3.1 美术素材 / Artwork
+
+客户端图标取自 [EDNeko](https://github.com/RouQingNeko1024/EDNeko)（GPL-3.0），即那个蓝色字母 `N`：
+
+| 文件 | 来源 |
+|---|---|
+| `resources/liquidbounce/icon_16x16.png`、`icon_32x32.png`、`icon_64x64.png` | EDNeko `assets/minecraft/edneko/icon_*.png`，原样使用 |
+| `resources/liquidbounce/logo_banner.png` | 由上述图标居中生成 |
+| `src-theme/public/img/lb-logo.svg`、`img/menu/icon-liquidbounce.svg`、`img/menu/icon-liquidbounce-hover.svg` | 同一图标，以 base64 内嵌为 SVG |
+
+原 LiquidBounce 的图标与横幅（[CCBlueX/LiquidBounce](https://github.com/CCBlueX/LiquidBounce)，GPL-3.0）已被替换，不再随本仓库分发。
+
+---
+
 ## 4. 许可证 / License
 
 本仓库整体以 **GNU General Public License v3.0** 发布，全文见 [LICENSE](LICENSE)。

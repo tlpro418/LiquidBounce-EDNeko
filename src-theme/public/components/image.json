@@ -12,7 +12,7 @@
     {
       "type": "TEXT",
       "name": "URL",
-      "value": "https://liquidbounce.net/images/logos/logo.svg"
+      "value": "https://raw.githubusercontent.com/tlpro418/LiquidBounce-EDNeko/main/src/main/resources/resources/liquidbounce/icon_64x64.png"
     },
     {
       "type": "FLOAT",
