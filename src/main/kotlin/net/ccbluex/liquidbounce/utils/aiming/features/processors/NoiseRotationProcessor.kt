@@ -162,7 +162,12 @@ class NoiseRotationProcessor(owner: EventListener? = null)
         // `Intensity.multiplier` is EDNeko's own amplitude multiplier and its
         // uniform source ranged over +-(multiplier / 2), so normalised noise in
         // [-1, 1] is scaled by half the multiplier to match it.
-        val scale = intensity.multiplier / 2f
+        //
+        // The `Legit` preset is the exception: it ships absolute degrees, so it deliberately bypasses
+        // both the intensity multiplier and the pitch ratio.
+        val isLegit = mode == NoiseMode.LEGIT
+        val scale = if (isLegit) 1f else intensity.multiplier / 2f
+        val ratio = if (isLegit) 1f else pitchRatio
 
         val (yawNoise, pitchNoise) = when (mode) {
             NoiseMode.FRACTAL -> fractal().let { it to it }
@@ -170,12 +175,27 @@ class NoiseRotationProcessor(owner: EventListener? = null)
             NoiseMode.HUMAN -> human().let { it to it }
             NoiseMode.HYBRID -> hybridAxis(0, distance) to hybridAxis(1, distance)
             NoiseMode.ENTROPY -> entropyNoise(scale).let { it to it }
+            NoiseMode.LEGIT -> legitNoise()
         }
 
         return Rotation(
             targetRotation.yaw + yawNoise * scale,
-            (targetRotation.pitch + pitchNoise * scale * pitchRatio).coerceIn(-90f, 90f)
+            (targetRotation.pitch + pitchNoise * scale * ratio).coerceIn(-90f, 90f)
         )
+    }
+
+    /**
+     * Faithful port of EDNeko's `NoisePresets` `Legit` preset.
+     *
+     * Uniform jitter of +-0.15 deg on the yaw and +-0.075 deg on the pitch, plus a slow +-0.05 deg sine
+     * drift on the yaw whose period is about 63 ticks.
+     */
+    private fun legitNoise(): Pair<Float, Float> {
+        val yawJitter = ((0f..1f).random() - 0.5f) * 0.3f
+        val pitchJitter = ((0f..1f).random() - 0.5f) * 0.15f
+        val microAdjustment = sin(tick * 0.1f) * 0.05f
+
+        return (yawJitter + microAdjustment) to pitchJitter
     }
 
     /** Multi-octave fractal noise, normalised back into roughly [-1, 1]. */
@@ -423,7 +443,13 @@ class NoiseRotationProcessor(owner: EventListener? = null)
         DRIFT("Drift"),
         HUMAN("Human"),
         HYBRID("Hybrid"),
-        ENTROPY("Entropy")
+        ENTROPY("Entropy"),
+
+        /**
+         * EDNeko's `Legit` noise preset. Amplitudes are absolute degrees, so [Intensity] and
+         * `PitchRatio` do not apply to it.
+         */
+        LEGIT("Legit")
     }
 
     /**

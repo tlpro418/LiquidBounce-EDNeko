@@ -30,7 +30,9 @@ import net.ccbluex.liquidbounce.utils.entity.getActualHealth
 import net.ccbluex.liquidbounce.utils.entity.squaredBoxedDistanceTo
 import net.ccbluex.liquidbounce.utils.math.sq
 import net.ccbluex.liquidbounce.utils.sorting.ComparatorChain
+import net.minecraft.block.Blocks
 import net.minecraft.entity.LivingEntity
+import net.minecraft.entity.effect.StatusEffects
 import net.minecraft.entity.mob.Angerable
 import net.minecraft.entity.mob.HostileEntity
 import net.minecraft.entity.player.PlayerEntity
@@ -108,6 +110,60 @@ open class TargetSelector(
     private var comparator: Comparator<in LivingEntity> = TargetPriority.TYPE
 
     /**
+     * How a target is picked out of the sorted candidates. Ported from EDNeko's
+     * `KillAura-Targeting > TargetMode`.
+     *
+     *  - [TargetMode.SINGLE] always takes the best candidate (LiquidBounce's original behaviour),
+     *  - [TargetMode.SWITCH] cycles through the candidates instead of staring at one enemy,
+     *  - [TargetMode.MULTI] attacks several candidates within the same click.
+     */
+    private val targetMode by enumChoice("TargetMode", TargetMode.SINGLE)
+
+    /**
+     * A candidate is only considered in [TargetMode.SWITCH] while it is within this angle of the
+     * crosshair, so the aura does not spin around wildly.
+     */
+    private val maxSwitchFov by float("MaxSwitchFOV", 90f, 30f..180f)
+
+    /**
+     * Ticks an already attacked candidate is skipped in [TargetMode.SWITCH] before it becomes eligible
+     * again. EDNEko expresses this in milliseconds; ticks are used here because the whole simulation is
+     * tick based.
+     */
+    private val switchDelay by int("SwitchDelay", 15, 1..1000, "ticks")
+
+    /**
+     * Maximum amount of extra enemies attacked per click in [TargetMode.MULTI]. `0` means no limit.
+     */
+    private val limitedMultiTargets by int("LimitedMultiTargets", 0, 0..50)
+
+    /**
+     * Entity id to the tick it was attacked on, used to rotate through candidates in [TargetMode.SWITCH].
+     */
+    private val switchedTargets = HashMap<Int, Int>()
+
+    /**
+     * Whether multiple enemies should be attacked per click.
+     */
+    val isMultiTargetMode: Boolean
+        get() = targetMode == TargetMode.MULTI
+
+    /**
+     * Amount of extra enemies to attack per click, `0` for unlimited.
+     */
+    val multiTargetLimit: Int
+        get() = if (limitedMultiTargets <= 0) 0 else limitedMultiTargets
+
+    /**
+     * Marks [entity] as attacked, so [TargetMode.SWITCH] moves on to the next candidate.
+     */
+    fun markSwitched(entity: LivingEntity) {
+        if (targetMode == TargetMode.SWITCH) {
+            switchedTargets[entity.id] = player.age
+        }
+    }
+
+    /**
      * Counts available targets.
      */
     fun countTargets(): Int = world.entities.count { entity ->
@@ -135,8 +191,60 @@ open class TargetSelector(
         // Update max distance squared
         closestSquaredEnemyDistance = entities.minOf { it.squaredBoxedDistanceTo(player) }
 
-        return entities
+        return applyTargetMode(entities)
     }
+
+    /**
+     * Applies [targetMode] to the sorted candidate list.
+     */
+    private fun applyTargetMode(entities: MutableList<LivingEntity>): MutableList<LivingEntity> =
+        when (targetMode) {
+            TargetMode.SINGLE -> entities
+            TargetMode.SWITCH -> switchCandidates(entities)
+            TargetMode.MULTI -> limitCandidates(entities)
+        }
+
+    /**
+     * Drops candidates that were attacked within [switchDelay] ticks or that sit too far outside the
+     * crosshair, so the aura rotates through the available enemies instead of staring at one. Once
+     * everything has been attacked the round restarts.
+     */
+    private fun switchCandidates(entities: MutableList<LivingEntity>): MutableList<LivingEntity> {
+        val now = player.age
+
+        switchedTargets.entries.removeIf { now - it.value >= switchDelay }
+
+        val available = ObjectArrayList<LivingEntity>()
+        for (entity in entities) {
+            if (switchedTargets.containsKey(entity.id)) {
+                continue
+            }
+            // The best candidate is always kept. Filtering it out as well would leave an enemy that
+            // happens to sit outside MaxSwitchFOV completely unaimed, because the aura would never turn
+            // towards it in the first place - a self-locking loop.
+            if (available.isNotEmpty() && RotationUtil.crosshairAngleToEntity(entity) > maxSwitchFov) {
+                continue
+            }
+            available.add(entity)
+        }
+
+        if (available.isEmpty()) {
+            switchedTargets.clear()
+            return entities
+        }
+
+        return available
+    }
+
+    /**
+     * Caps the candidate list to [limitedMultiTargets] entries, `0` keeps everything.
+     */
+    private fun limitCandidates(entities: MutableList<LivingEntity>): MutableList<LivingEntity> =
+        if (limitedMultiTargets <= 0 || entities.size <= limitedMultiTargets) {
+            entities
+        } else {
+            ObjectArrayList(entities.subList(0, limitedMultiTargets))
+        }
 
     open fun validate(entity: LivingEntity) =
         entity !== player
@@ -238,4 +346,83 @@ enum class TargetPriority(override val choiceName: String) : NamedChoice, Compar
         override fun compare(o1: LivingEntity, o2: LivingEntity): Int =
             o2.age compareTo o1.age
     },
+
+    /**
+     * Least armour first. Ported from EDNeko's `KillAura-Targeting` priority of the same name.
+     */
+    ARMOR("Armor") {
+        override fun compare(o1: LivingEntity, o2: LivingEntity): Int =
+            o1.armor compareTo o2.armor
+    },
+
+    /**
+     * Least absorption hearts first. Ported from EDNeko's `KillAura-Targeting`.
+     */
+    HEALTH_ABSORPTION("HealthAbsorption") {
+        override fun compare(o1: LivingEntity, o2: LivingEntity): Int =
+            o1.absorptionAmount compareTo o2.absorptionAmount
+    },
+
+    /**
+     * Without a regeneration effect first, then by its amplifier. Ported from EDNeko's
+     * `KillAura-Targeting`.
+     */
+    REGEN_AMPLIFIER("RegenAmplifier") {
+        private fun amplifier(entity: LivingEntity): Int =
+            entity.getStatusEffect(StatusEffects.REGENERATION)?.amplifier ?: -1
+
+        override fun compare(o1: LivingEntity, o2: LivingEntity): Int =
+            amplifier(o1) compareTo amplifier(o2)
+    },
+
+    /**
+     * Targets that are not sitting on a ladder first. Ported from EDNeko's `KillAura-Targeting`.
+     */
+    ON_LADDER("OnLadder") {
+        override fun compare(o1: LivingEntity, o2: LivingEntity): Int =
+            o1.isClimbing compareTo o2.isClimbing
+    },
+
+    /**
+     * Targets that are not standing in a liquid first. Ported from EDNeko's `KillAura-Targeting`.
+     */
+    IN_LIQUID("InLiquid") {
+        private fun inLiquid(entity: LivingEntity): Boolean =
+            entity.isTouchingWater || entity.isInLava
+
+        override fun compare(o1: LivingEntity, o2: LivingEntity): Int =
+            inLiquid(o1) compareTo inLiquid(o2)
+    },
+
+    /**
+     * Targets that are not stuck in a cobweb first. Ported from EDNeko's `KillAura-Targeting`.
+     */
+    IN_WEB("InWeb") {
+        private fun inWeb(entity: LivingEntity): Boolean =
+            world.getBlockState(entity.blockPos).isOf(Blocks.COBWEB)
+
+        override fun compare(o1: LivingEntity, o2: LivingEntity): Int =
+            inWeb(o1) compareTo inWeb(o2)
+    },
+}
+
+/**
+ * How [TargetTracker] picks a target out of the sorted candidates. Ported from EDNeko's
+ * `KillAura-Targeting > TargetMode`.
+ */
+enum class TargetMode(override val choiceName: String) : NamedChoice {
+    /**
+     * Always the best candidate.
+     */
+    SINGLE("Single"),
+
+    /**
+     * Rotate through the candidates, skipping ones that were attacked recently.
+     */
+    SWITCH("Switch"),
+
+    /**
+     * Attack several candidates within the same click.
+     */
+    MULTI("Multi"),
 }

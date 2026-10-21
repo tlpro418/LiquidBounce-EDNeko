@@ -59,6 +59,7 @@ import net.ccbluex.liquidbounce.utils.aiming.utils.raytraceEntity
 import net.ccbluex.liquidbounce.utils.combat.CombatManager
 import net.ccbluex.liquidbounce.utils.combat.attack
 import net.ccbluex.liquidbounce.utils.combat.shouldBeAttacked
+import net.ccbluex.liquidbounce.utils.entity.SimulatedPlayer
 import net.ccbluex.liquidbounce.utils.entity.rotation
 import net.ccbluex.liquidbounce.utils.entity.squaredBoxedDistanceTo
 import net.ccbluex.liquidbounce.utils.inventory.InventoryManager.isInventoryOpen
@@ -66,11 +67,14 @@ import net.ccbluex.liquidbounce.utils.inventory.isInContainerScreen
 import net.ccbluex.liquidbounce.utils.kotlin.Priority
 import net.ccbluex.liquidbounce.utils.kotlin.random
 import net.ccbluex.liquidbounce.utils.math.sq
+import net.ccbluex.liquidbounce.utils.movement.DirectionalInput
 import net.ccbluex.liquidbounce.utils.render.WorldTargetRenderer
 import net.minecraft.client.gui.screen.ingame.GenericContainerScreen
 import net.minecraft.client.util.math.MatrixStack
 import net.minecraft.entity.Entity
 import net.minecraft.entity.LivingEntity
+import net.minecraft.util.math.Vec3d
+import kotlin.math.roundToInt
 
 /**
  * KillAura module
@@ -93,6 +97,37 @@ object ModuleKillAura : ClientModule("KillAura", Category.COMBAT) {
         currentScanExtraRange = range.random()
     }
     private var currentScanExtraRange: Float = scanExtraRange.random()
+
+    /**
+     * How far the aura is willing to turn towards an enemy, independent of [range].
+     *
+     * The attack range decides whether a hit lands. Aiming used to share that same bound, so an enemy
+     * standing just outside [range] was never even looked at - which made it impossible to walk towards
+     * it while keeping it in view, and could deadlock completely once it walked away. Separating the two
+     * fixes that without weakening the attack range.
+     */
+    private val aimRange by float("AimRange", 8.0f, 3f..32f)
+
+    /**
+     * Lead for the enemy's hitbox, in ticks. Ported from EDNeko's `KillAura-Prediction`.
+     *
+     * EDNEko offsets the hitbox by `(pos - lastPos) * (2 + PredictEnemyPosition)`, i.e. a fixed two
+     * ticks of latency plus this multiplier. NG's point tracker already extrapolates the entity, so the
+     * multiplier is turned into a whole amount of ticks, which is the closest equivalent its API offers.
+     */
+    private val predictEnemyPosition by float("PredictEnemyPosition", 1.5f, -1f..2f)
+
+    /**
+     * How many ticks of the player's own movement are simulated before the angle is computed. Ported
+     * from EDNeko's `KillAura-Prediction`.
+     */
+    private val predictClientMovement by int("PredictClientMovement", 2, 0..5)
+
+    /**
+     * Keep advancing the simulated movement only while it closes the distance and the target is still
+     * out of reach. Ported from EDNeko's `KillAura-Prediction`.
+     */
+    private val predictOnlyWhenOutOfRange by boolean("PredictOnlyWhenOutOfRange", false)
 
     // Target
     val targetTracker = tree(KillAuraTargetTracker)
@@ -291,6 +326,8 @@ object ModuleKillAura : ClientModule("KillAura", Category.COMBAT) {
 
                 // Attack enemy
                 target.attack(true, keepSprint && !shouldBlockSprinting)
+                (target as? LivingEntity)?.let(targetTracker::markSwitched)
+                attackAdditionalTargets(target)
                 currentScanExtraRange = scanExtraRange.random()
                 KillAuraNotifyWhenFail.failedHitsIncrement = 0
 
@@ -309,13 +346,37 @@ object ModuleKillAura : ClientModule("KillAura", Category.COMBAT) {
         }
     }
 
-    private fun updateTarget() {
-        // Calculate maximum range based on enemy distance
-        val maximumRange = if (targetTracker.closestSquaredEnemyDistance > range.sq()) {
-            range + currentScanExtraRange
-        } else {
-            range
+    /**
+     * Attacks the remaining candidates within the same click when the tracker runs in its `Multi` target
+     * mode. Ported from EDNeko's `KillAura-Targeting > TargetMode = Multi`, which walks every valid entity
+     * and attacks it, stopping after `LimitedMultiTargets` extras when that limit is set.
+     */
+    private fun attackAdditionalTargets(primary: Entity) {
+        if (!targetTracker.isMultiTargetMode) {
+            return
         }
+
+        val limit = targetTracker.multiTargetLimit
+        var attacked = 0
+
+        for (entity in targetTracker.targets()) {
+            if (entity === primary || !validateAttack(entity)) {
+                continue
+            }
+
+            entity.attack(true, keepSprint && !shouldBlockSprinting)
+            attacked++
+
+            if (limit > 0 && attacked >= limit) {
+                break
+            }
+        }
+    }
+
+    private fun updateTarget() {
+        // How far we are willing to look for a target. Attacks are still limited by `range`, this only
+        // controls how far the aura turns.
+        val maximumRange = maxOf(range + currentScanExtraRange, aimRange)
 
         debugParameter("Maximum Range") { maximumRange }
         debugParameter("Range") { range }
@@ -397,8 +458,11 @@ object ModuleKillAura : ClientModule("KillAura", Category.COMBAT) {
      *  @return The best spot to attack the entity
      */
     private fun findRotation(entity: LivingEntity, range: Double): RotationWithVector? {
-        val eyes = player.eyePos
-        val point = pointTracker.findPoint(eyes, entity)
+        // Both the eye position and the target box are predicted, so the angle is correct for the moment
+        // the attack is actually processed instead of trailing a tick behind.
+        val eyes = predictedEyePos(entity, range)
+        val enemyTicks = (2f + predictEnemyPosition).roundToInt().coerceIn(0, 30)
+        val point = pointTracker.findPoint(eyes, entity, enemyTicks)
 
         debugGeometry("Box") { ModuleDebug.DebuggedBox(point.box, Color4b.ORANGE.with(a = 90)) }
         debugGeometry("Point") { ModuleDebug.DebuggedPoint(point.pos, Color4b.WHITE, size = 0.1) }
@@ -428,6 +492,49 @@ object ModuleKillAura : ClientModule("KillAura", Category.COMBAT) {
         } else {
             rotation
         }
+    }
+
+    /**
+     * Where the player's eyes are expected to be once the attack is processed, obtained by ticking a
+     * simulated player with the current input. Ported from EDNeko's `KillAura-Prediction`.
+     *
+     * When [predictOnlyWhenOutOfRange] is enabled the simulation only keeps advancing while it moves
+     * towards the enemy and the enemy is still out of reach, which is EDNEko's behaviour. With it disabled
+     * all ticks are applied - EDNEko's own loop effectively advanced one tick less in that case, which
+     * looks like an artifact rather than a feature.
+     */
+    private fun predictedEyePos(entity: LivingEntity, range: Double): Vec3d {
+        val ticks = predictClientMovement
+
+        if (ticks <= 0) {
+            return player.eyePos
+        }
+
+        val eyeOffset = player.eyePos.y - player.y
+        val simulated = SimulatedPlayer.fromClientPlayer(
+            SimulatedPlayer.SimulatedPlayerInput.fromClientPlayer(DirectionalInput(player.input))
+        )
+
+        val squaredRange = range * range
+        var result = simulated.pos
+        var previousDistance = simulated.pos.squaredDistanceTo(entity.boundingBox.center)
+
+        repeat(ticks) {
+            val before = simulated.pos
+            simulated.tick()
+
+            if (predictOnlyWhenOutOfRange) {
+                val distance = simulated.pos.squaredDistanceTo(entity.boundingBox.center)
+                val keepsClosing = distance <= squaredRange && distance <= previousDistance
+
+                result = if (keepsClosing) simulated.pos else before
+                previousDistance = distance
+            } else {
+                result = simulated.pos
+            }
+        }
+
+        return Vec3d(result.x, result.y + eyeOffset, result.z)
     }
 
     /**

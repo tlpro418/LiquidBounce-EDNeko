@@ -33,7 +33,11 @@ import net.ccbluex.liquidbounce.utils.client.player
 import net.ccbluex.liquidbounce.utils.entity.hasCooldown
 import net.ccbluex.liquidbounce.utils.kotlin.EventPriorityConvention
 import net.minecraft.client.option.KeyBinding
+import net.minecraft.entity.LivingEntity
+import net.minecraft.util.hit.EntityHitResult
 import java.util.*
+import kotlin.math.min
+import kotlin.math.roundToInt
 
 /**
  * An attack scheduler
@@ -74,6 +78,47 @@ open class Clicker<T>(
         .onChanged {
             fill()
         }
+
+    /**
+     * How the CPS range is determined. Ported from EDNeko's `KillAura-CPS`.
+     */
+    private val cpsMode by enumChoice("CPSMode", CpsMode.SIMPLE)
+        .onChanged {
+            fill()
+        }
+
+    /**
+     * Lower bound of the adaptive CPS range, and the range it starts from before adapting.
+     */
+    private val adaptiveBaseCps by intRange("AdaptiveBaseCPS", 5..8, 1..30)
+        .onChanged {
+            fill()
+        }
+
+    /**
+     * Upper bound the adaptive range may grow to.
+     */
+    private val adaptiveMaxCps by int("AdaptiveMaxCPS", 16, 8..50)
+
+    /**
+     * How strongly a single adaptation moves the upper bound. EDNeko's `AdaptiveLearningRate`.
+     */
+    private val adaptiveLearningRate by float("AdaptiveLearningRate", 0.15f, 0.01f..1f)
+
+    /**
+     * Base adaptation strength before the distance variance is taken into account.
+     */
+    private val adaptiveSensitivity by float("AdaptiveSensitivity", 0.5f, 0.1f..2f)
+
+    /**
+     * How many distance samples the adaptation looks at.
+     */
+    private val adaptiveMemory by int("AdaptiveMemory", 20, 5..100)
+
+    /**
+     * Recent distances to the target, used by [computeAdaptiveCps].
+     */
+    private val adaptiveHistory = ArrayDeque<Float>()
 
     init {
         itemCooldown?.let(this::tree)
@@ -189,7 +234,7 @@ open class Clicker<T>(
 
         if (clickArray.advance()) {
             val cycleArray = IntArray(DEFAULT_CYCLE_LENGTH)
-            pattern.pattern.fill(cycleArray, cps, this)
+            pattern.pattern.fill(cycleArray, effectiveCps(), this)
             clickArray.push(cycleArray)
         }
 
@@ -206,10 +251,53 @@ open class Clicker<T>(
         val cycleArray = IntArray(DEFAULT_CYCLE_LENGTH)
         repeat(clickArray.iterations) {
             Arrays.fill(cycleArray, 0)
-            pattern.pattern.fill(cycleArray, cps, this)
+            pattern.pattern.fill(cycleArray, effectiveCps(), this)
             clickArray.push(cycleArray)
             clickArray.advance(DEFAULT_CYCLE_LENGTH)
         }
+    }
+
+    /**
+     * CPS range used for the next click cycle.
+     */
+    private fun effectiveCps(): IntRange =
+        if (cpsMode == CpsMode.ADAPTIVE) computeAdaptiveCps() else cps
+
+    /**
+     * Faithful port of EDNeko's `KillAuraCPS.computeAdaptiveCPS`.
+     *
+     * The further away the target is and the more that distance fluctuates, the higher the upper bound
+     * of the CPS range climbs - up to [adaptiveMaxCps]. The lower bound always stays at
+     * [adaptiveBaseCps]'s start.
+     *
+     * EDNEko's `AdaptiveResponseTime` is deliberately not exposed: its own `computeAdaptiveCPS` never
+     * reads it, so there is nothing to port and inventing a use would change the behaviour.
+     */
+    private fun computeAdaptiveCps(): IntRange {
+        val target = (mc.crosshairTarget as? EntityHitResult)?.entity as? LivingEntity
+
+        if (target != null) {
+            adaptiveHistory.addLast(player.distanceTo(target))
+
+            while (adaptiveHistory.size > adaptiveMemory) {
+                adaptiveHistory.removeFirst()
+            }
+        }
+
+        if (adaptiveHistory.isEmpty()) {
+            return adaptiveBaseCps
+        }
+
+        val average = adaptiveHistory.average().toFloat()
+        val variance = adaptiveHistory.sumOf { ((it - average) * (it - average)).toDouble() }
+            .div(adaptiveHistory.size)
+            .toFloat()
+
+        val sensitivity = adaptiveSensitivity * (1f + variance / 10f)
+        val span = adaptiveMaxCps - adaptiveBaseCps.first
+        val extra = (sensitivity * adaptiveLearningRate * span).roundToInt()
+
+        return adaptiveBaseCps.first..min(adaptiveBaseCps.last + extra, adaptiveMaxCps)
     }
 
     override fun parent() = parent
@@ -226,6 +314,17 @@ open class Clicker<T>(
         DRAG("Drag", DragPattern),
         BUTTERFLY("Butterfly", ButterflyPattern),
         NORMAL_DISTRIBUTION("NormalDistribution", NormalDistributionPattern);
+    }
+
+    /**
+     * How the CPS range is chosen, ported from EDNeko's `KillAura-CPS` mode list. Only the modes that
+     * were asked for are kept; EDNEko's remaining ones (Dynamic, Wave, Burst, Step, Jitter, Spike, Smart,
+     * Reactive, Momentum, Fatigue, Combo, Stamina) are not ported.
+     */
+    @Suppress("unused")
+    enum class CpsMode(override val choiceName: String) : NamedChoice {
+        SIMPLE("Simple"),
+        ADAPTIVE("Adaptive"),
     }
 
 }
