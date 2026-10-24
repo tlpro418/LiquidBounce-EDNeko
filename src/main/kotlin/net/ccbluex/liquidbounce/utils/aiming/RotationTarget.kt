@@ -64,7 +64,12 @@ class RotationTarget(
     /**
      * What should be done if the target rotation has been reached. Can be `null`.
       */
-    val whenReached: RestrictedSingleUseAction? = null
+    val whenReached: RestrictedSingleUseAction? = null,
+    /**
+     * How many degrees of divergence between the packet rotation and the player's real view are allowed in
+     * [MovementCorrection.SILENT]. `0` disables the clamp, which keeps the camera completely still.
+     */
+    val maxSilentOffset: Float = 0f
 ) {
 
     /**

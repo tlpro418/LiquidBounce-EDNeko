@@ -51,6 +51,7 @@ open class RotationsConfigurable(
             interpolationAngleSmooth,
             AccelerationAngleSmooth(it),
             BezierAngleSmooth(it),
+            LegitAngleSmooth(it),
             if (combatSpecific) MinaraiAngleSmooth(it, interpolationAngleSmooth ?: linearAngleSmooth) else null
         ).toTypedArray()
     }
@@ -61,6 +62,13 @@ open class RotationsConfigurable(
     private var ednekoRandomization = EdnekoRandomizationProcessor(owner).takeIf { combatSpecific }?.also { tree(it) }
 
     private val movementCorrection by enumChoice("MovementCorrection", movementCorrection)
+
+    /**
+     * How far the packet rotation may run ahead of the real view in [MovementCorrection.SILENT]. A large
+     * divergence means the server sees aim your own camera never follows, which rotation checks can pick up.
+     * `0` disables the clamp.
+     */
+    private val maxSilentOffset by float("MaxSilentOffset", 0f, 0f..180f, "°")
     private val resetThreshold by float("ResetThreshold", 2f, 1f..180f)
     private val ticksUntilReset by int("TicksUntilReset", 5, 1..30, "ticks")
 
@@ -83,7 +91,8 @@ open class RotationsConfigurable(
         resetThreshold,
         considerInventory,
         movementCorrection,
-        whenReached
+        whenReached,
+        maxSilentOffset
     )
 
     /**

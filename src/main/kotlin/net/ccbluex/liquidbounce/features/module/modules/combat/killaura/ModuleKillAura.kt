@@ -73,8 +73,8 @@ import net.minecraft.client.gui.screen.ingame.GenericContainerScreen
 import net.minecraft.client.util.math.MatrixStack
 import net.minecraft.entity.Entity
 import net.minecraft.entity.LivingEntity
+import net.minecraft.util.math.Box
 import net.minecraft.util.math.Vec3d
-import kotlin.math.roundToInt
 
 /**
  * KillAura module
@@ -128,6 +128,12 @@ object ModuleKillAura : ClientModule("KillAura", Category.COMBAT) {
      * out of reach. Ported from EDNeko's `KillAura-Prediction`.
      */
     private val predictOnlyWhenOutOfRange by boolean("PredictOnlyWhenOutOfRange", false)
+
+    /**
+     * Turn towards the target even when every spot of its hitbox is obstructed. Turning towards an enemy
+     * we cannot hit is closer to what a player does than standing still, which looked like the aura gave up.
+     */
+    private val fallbackAim by boolean("FallbackAim", true)
 
     // Target
     val targetTracker = tree(KillAuraTargetTracker)
@@ -461,37 +467,56 @@ object ModuleKillAura : ClientModule("KillAura", Category.COMBAT) {
         // Both the eye position and the target box are predicted, so the angle is correct for the moment
         // the attack is actually processed instead of trailing a tick behind.
         val eyes = predictedEyePos(entity, range)
-        val enemyTicks = (2f + predictEnemyPosition).roundToInt().coerceIn(0, 30)
-        val point = pointTracker.findPoint(eyes, entity, enemyTicks)
 
-        debugGeometry("Box") { ModuleDebug.DebuggedBox(point.box, Color4b.ORANGE.with(a = 90)) }
-        debugGeometry("Point") { ModuleDebug.DebuggedPoint(point.pos, Color4b.WHITE, size = 0.1) }
+        // EDNEko leads the hitbox by `(2 + PredictEnemyPosition)` ticks. The point tracker only accepts
+        // whole ticks, so the remainder is applied to the box afterwards. Without that every value in
+        // [-0.5, 0.5] collapsed into the same two ticks and small leads were impossible to configure.
+        val lead = (2f + predictEnemyPosition).coerceIn(0f, 30f)
+        val wholeTicks = lead.toInt()
+        val remainder = lead - wholeTicks
 
-        val rotationPreference = LeastDifferencePreference.leastDifferenceToLastPoint(eyes, point.pos)
+        val point = pointTracker.findPoint(eyes, entity, wholeTicks)
+        val leadOffset = entity.velocity.multiply(remainder.toDouble())
+        val box = point.box.offset(leadOffset)
+        val aimPoint = point.pos.add(leadOffset)
+
+        debugGeometry("Box") { ModuleDebug.DebuggedBox(box, Color4b.ORANGE.with(a = 90)) }
+        debugGeometry("Point") { ModuleDebug.DebuggedPoint(aimPoint, Color4b.WHITE, size = 0.1) }
+
+        val rotationPreference = LeastDifferencePreference.leastDifferenceToLastPoint(eyes, aimPoint)
 
         // raytrace to the point
         val rotation = raytraceBox(
             eyes = eyes,
-            box = point.box,
+            box = box,
             range = range,
             wallsRange = wallRange.toDouble(),
             rotationPreference = rotationPreference
-        )
-
-        return if (rotation == null && rotations.aimThroughWalls) {
-            val rotationThroughWalls = raytraceBox(
+        ) ?: if (rotations.aimThroughWalls) {
+            raytraceBox(
                 eyes = eyes,
-                box = point.box,
-                // Since [range] is squared, we need to square root
+                box = box,
                 range = range,
                 wallsRange = range,
                 rotationPreference = rotationPreference
             )
-
-            rotationThroughWalls
         } else {
-            rotation
+            null
         }
+
+        // Turning towards an enemy we cannot hit is better than not turning at all. Without this, any
+        // partial obstruction made the aura look like it simply gave up.
+        return rotation ?: if (fallbackAim) fallbackRotation(eyes, box) else null
+    }
+
+    /**
+     * Last resort used when no unobstructed spot on the hitbox exists: look straight at the box centre
+     * without checking visibility.
+     */
+    private fun fallbackRotation(eyes: Vec3d, box: Box): RotationWithVector {
+        val center = box.center
+
+        return RotationWithVector(Rotation.lookingAt(point = center, from = eyes), center)
     }
 
     /**

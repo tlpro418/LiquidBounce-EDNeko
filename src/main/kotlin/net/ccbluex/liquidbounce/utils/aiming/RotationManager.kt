@@ -178,8 +178,12 @@ object RotationManager : EventListener {
                 currentRotation = null
                 previousRotationTarget = null
             } else {
-                if (activeRotationTarget.movementCorrection == MovementCorrection.CHANGE_LOOK) {
+                val correction = activeRotationTarget.movementCorrection
+
+                if (correction == MovementCorrection.CHANGE_LOOK) {
                     player.setRotation(rotation)
+                } else if (correction == MovementCorrection.SILENT) {
+                    clampSilentOffset(rotation, playerRotation, activeRotationTarget.maxSilentOffset)
                 }
 
                 currentRotation = rotation
@@ -191,6 +195,30 @@ object RotationManager : EventListener {
 
         // Update reset ticks
         rotationTargetHandler.tick()
+    }
+
+    /**
+     * Swings the player's real view towards the silent rotation, but only as far as needed to leave [limit]
+     * degrees of divergence.
+     *
+     * A silent rotation never moves the camera, and that missing camera movement is the one thing that
+     * separates it from [MovementCorrection.CHANGE_LOOK] on the wire. Limiting the divergence keeps the aim
+     * looking like ordinary mouse movement while most of it stays hidden.
+     */
+    private fun clampSilentOffset(rotation: Rotation, playerRotation: Rotation, limit: Float) {
+        if (limit <= 0f) {
+            return
+        }
+
+        val delta = playerRotation.rotationDeltaTo(rotation)
+        val yawExcess = delta.deltaYaw - delta.deltaYaw.coerceIn(-limit, limit)
+        val pitchExcess = delta.deltaPitch - delta.deltaPitch.coerceIn(-limit, limit)
+
+        if (yawExcess == 0f && pitchExcess == 0f) {
+            return
+        }
+
+        player.setRotation(Rotation(playerRotation.yaw + yawExcess, playerRotation.pitch + pitchExcess))
     }
 
     /**
